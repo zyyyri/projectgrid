@@ -1,0 +1,1541 @@
+---
+alwaysApply: true
+---
+
+## 1. ARCHITECTURAL PRINCIPLES (MANDATORY)
+
+### 1.1 Four-Layer Architecture - NEVER VIOLATE
+
+**Layer 1: Services (src/services) - The API Gateway**
+- Single Responsibility: Pure API communication functions only
+- No business logic, only data transformation and error handling
+- Must use either client-side or server-side fetcher appropriately
+- Always declare explicit types for functions and avoid "any"
+- Create precise, descriptive types
+
+**Layer 2: Hooks (src/hooks) - State and Read Operations**
+- Custom React hooks for data fetching and state management
+- Use SWR/React Query for server state synchronization
+- Dependency Inversion: Abstract data fetching from components
+- Always use type-safe operations
+
+**Layer 3: Server Actions (src/actions) - Write Operations**
+- Handle all data mutations (create, update, delete)
+- Interface Segregation: One action per specific operation
+- Server-side execution for enhanced security
+- Use Prisma transactions for complex, multi-step operations
+
+**Layer 4: Components (src/components) - UI Layer**
+- Open/Closed: Components open for extension, closed for modification
+- Liskov Substitution: Components should be interchangeable
+- Single Responsibility: Focus on UI presentation only
+- Always use kebab-case for component names (e.g. my-component.tsx)
+
+### 1.2 Data Flow Patterns - STRICTLY ENFORCE
+
+*For Reading Data (GET Operations):*
+// CORRECT: Four-layer pattern
+Client Component → useSWR Hook → Service Function → Backend API
+
+// INCORRECT: Direct API calls in components
+Client Component → fetch() // ❌ NEVER DO THIS
+
+*For Writing Data (Mutations):*
+// CORRECT: Server Action pattern
+Client Component → Server Action → Service Function → Backend API
+
+// INCORRECT: Client-side mutations
+Client Component → useState + fetch() // ❌ NEVER DO THIS
+
+*Exception Pattern - File Uploads Only:*
+// ALLOWED: Direct service calls for file uploads
+Client Component → Direct Service Call → Backend API
+
+### 1.3 Fetcher Pattern - SECURITY CRITICAL
+
+**Client-Side Fetcher (src/services/fetcher.service.ts)**
+// Use ONLY in hooks for client-side data fetching
+export async function clientFetcher(url: string) {
+  const token = localStorage.getItem('jwt') // Auto-retrieves JWT
+  // Implementation...
+}
+
+**Server-Side Fetcher (src/services/fetcher.service.ts)**
+// Use ONLY in Server Actions with explicit JWT
+export async function serverFetcher(url: string, token: string) {
+  // No localStorage access - token MUST be passed explicitly
+  // Implementation...
+}
+
+---
+
+## 2. CODE ORGANIZATION & SOLID PRINCIPLES
+
+### 2.1 File Structure - MANDATORY HIERARCHY
+src/
+├── services/          # Layer 1: API Gateway (Single Responsibility)
+│   ├── fetcher.service.ts
+│   ├── product.service.ts
+│   ├── auth.service.ts
+│   └── prisma/        # Prisma-specific services
+│       ├── product.prisma.ts
+│       └── user.prisma.ts
+├── hooks/            # Layer 2: State & Read Operations (Dependency Inversion)
+│   ├── useProducts.ts
+│   ├── useAuth.ts
+│   └── useTenant.ts
+├── actions/          # Layer 3: Write Operations (Interface Segregation)
+│   ├── createProduct.ts
+│   ├── updateProduct.ts
+│   └── deleteProduct.ts
+├── components/       # Layer 4: UI Presentation (Open/Closed Principle)
+│   ├── product-card.tsx
+│   ├── product-list.tsx
+│   └── add-to-cart-button.tsx
+├── context/          # Global State Providers
+│   ├── auth-context.tsx
+│   └── tenant-context.tsx
+├── types/            # TypeScript Definitions
+│   ├── product.types.ts
+│   └── auth.types.ts
+├── utils/            # Helper Functions
+│   └── validation.ts
+└── prisma/           # Prisma Schema and Migrations
+    ├── schema.prisma
+    └── migrations/
+
+### 2.2 Naming Conventions - ENFORCE CONSISTENCY
+
+#### General Rules (TypeScript Guidelines)
+- Use English for all code and documentation
+- *PascalCase for:*
+  - Components (ProductCard.tsx)
+  - Type definitions (ProductType.ts)
+  - Interfaces (UserInterface.ts)
+  - Classes and Prisma models
+- *kebab-case for:*
+  - Directory names (auth-wizard/, user-profile/)
+  - File names (user-profile.tsx, auth-service.ts)
+  - Component names (my-component.tsx)
+- *camelCase for:*
+  - Variables (userName, isLoading)
+  - Functions (getUserData, handleSubmit)
+  - Methods (calculateTotal, validateForm)
+  - Hooks (useAuth, useProducts)
+  - Properties (firstName, emailAddress)
+  - Props (showModal, onClose)
+- *UPPERCASE for:*
+  - Environment variables (API_BASE_URL)
+  - Constants (MAX_RETRY_ATTEMPTS)
+  - Global configurations (DEFAULT_THEME)
+
+#### Specific Naming Patterns
+- *Event handlers*: Prefix with 'handle' (handleClick, handleSubmit)
+- *Boolean variables*: Use verb-based names (isLoading, hasError, canDelete)
+- *Custom hooks*: Prefix with 'use' (useAuth, useForm)
+- *Function names*: Start with a verb
+- *Complete words over abbreviations* except for:
+  - Standard abbreviations like API, URL
+  - i, j for loop indices
+  - err for errors
+  - ctx for contexts
+  - req (request)
+  - res (response)
+  - props (properties)
+  - ref (reference)
+
+### 2.3 Import Organization - DEPENDENCY INVERSION
+// 1. External libraries (stable dependencies)
+import React from 'react'
+import { NextPage } from 'next'
+import { Button } from '@repo/ui/button'
+
+// 2. Internal layers (depend on abstractions, not concretions)
+import { useProducts } from '../hooks/useProducts' // Hook abstracts service
+import { ProductCard } from '../components/product-card' // Component depends on hook
+import type { ProductType } from '../types/product.types' // Type dependencies
+
+---
+
+## 3. PRISMA ORM DEVELOPMENT GUIDELINES
+
+### 3.1 Schema Design - DOMAIN-DRIVEN MODELING
+
+#### Basic Principles
+- Use meaningful, domain-driven model names
+- Leverage Prisma schema features:
+  - Use @id for primary keys
+  - Use @unique for natural unique identifiers
+  - Utilize @relation for explicit relationship definitions
+- Keep schemas normalized and DRY
+- Use meaningful field names and types
+- Implement soft delete with deletedAt timestamp
+- Use Prisma's native type decorators
+
+prisma
+// Example: Domain-driven schema design
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  price       Decimal  @db.Money
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  
+  // Relations with explicit definitions
+  category    Category @relation(fields: [categoryId], references: [id])
+  categoryId  String
+  
+  @@map("products")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  products  Product[]
+  
+  @@map("categories")
+}
+
+### 3.2 Prisma Client Usage - TYPE-SAFE OPERATIONS
+
+#### Service Layer Implementation
+// product.prisma.ts - Prisma-specific service
+import { prisma } from '@/lib/prisma'
+import type { Product, Prisma } from '@prisma/client'
+
+export async function findProducts(
+  where?: Prisma.ProductWhereInput
+): Promise<Product[]> {
+  try {
+    return await prisma.product.findMany({
+      where: {
+        deletedAt: null, // Soft delete handling
+        ...where,
+      },
+      include: {
+        category: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    })
+  } catch (error) {
+    throw new Error(`Failed to fetch products: ${error.message}`)
+  }
+}
+
+export async function createProduct(
+  data: Prisma.ProductCreateInput
+): Promise<Product> {
+  try {
+    return await prisma.product.create({
+      data,
+      include: {
+        category: true,
+      },
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // Handle specific Prisma errors
+      if (error.code === 'P2002') {
+        throw new Error('Product with this slug already exists')
+      }
+    }
+    throw new Error(`Failed to create product: ${error.message}`)
+  }
+}
+
+#### Prisma Middleware for Cross-Cutting Concerns
+// middleware/prisma.ts
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+// Soft delete middleware
+prisma.$use(async (params, next) => {
+  // Handle soft delete for findMany
+  if (params.model === 'Product' && params.action === 'findMany') {
+    if (params.args.where?.deletedAt === undefined) {
+      params.args.where = { ...params.args.where, deletedAt: null }
+    }
+  }
+  
+  // Handle soft delete for delete
+  if (params.model === 'Product' && params.action === 'delete') {
+    params.action = 'update'
+    params.args.data = { deletedAt: new Date() }
+  }
+  
+  return next(params)
+})
+
+export { prisma }
+
+### 3.3 Database Migrations - IDEMPOTENT & DESCRIPTIVE
+
+#### Migration Best Practices
+- Create migrations for schema changes
+- Use descriptive migration names
+- Review migrations before applying
+- Never modify existing migrations
+- Keep migrations idempotent
+
+# Example migration commands
+npx prisma migrate dev --name add-soft-delete-to-products
+npx prisma migrate deploy # Production
+npx prisma db push # Development only
+
+### 3.4 Error Handling with Prisma - SPECIFIC & CONTEXTUAL
+
+// error-handler.ts
+import { 
+  PrismaClientKnownRequestError,
+  PrismaClientUnknownRequestError,
+  PrismaClientValidationError 
+} from '@prisma/client/runtime/library'
+
+export function handlePrismaError(error: unknown): string {
+  if (error instanceof PrismaClientKnownRequestError) {
+    switch (error.code) {
+      case 'P2002':
+        return 'A record with this unique field already exists'
+      case 'P2014':
+        return 'The change would violate a required relation'
+      case 'P2003':
+        return 'Foreign key constraint failed'
+      default:
+        return `Database error: ${error.message}`
+    }
+  }
+  
+  if (error instanceof PrismaClientValidationError) {
+    return 'Invalid data provided'
+  }
+  
+  if (error instanceof PrismaClientUnknownRequestError) {
+    return 'An unknown database error occurred'
+  }
+  
+  return 'An unexpected error occurred'
+}
+
+### 3.5 Testing Prisma Code - COMPREHENSIVE COVERAGE
+
+// __tests__/product.prisma.test.ts
+import { PrismaClient } from '@prisma/client'
+import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended'
+import { findProducts, createProduct } from '../services/product.prisma'
+
+jest.mock('@/lib/prisma', () => ({
+  __esModule: true,
+  prisma: mockDeep<PrismaClient>(),
+}))
+
+const mockPrisma = prisma as unknown as DeepMockProxy<PrismaClient>
+
+beforeEach(() => {
+  mockReset(mockPrisma)
+})
+
+describe('Product Service', () => {
+  test('findProducts returns products with category', async () => {
+    const mockProducts = [
+      {
+        id: '1',
+        name: 'Test Product',
+        slug: 'test-product',
+        category: { id: '1', name: 'Test Category' },
+      },
+    ]
+    
+    mockPrisma.product.findMany.mockResolvedValue(mockProducts)
+    
+    const result = await findProducts()
+    
+    expect(result).toEqual(mockProducts)
+    expect(mockPrisma.product.findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      include: { category: true },
+      orderBy: { createdAt: 'desc' },
+    })
+  })
+  
+  test('createProduct handles unique constraint violation', async () => {
+    const error = new PrismaClientKnownRequestError(
+      'Unique constraint failed',
+      {
+        code: 'P2002',
+        clientVersion: '4.0.0',
+      }
+    )
+    
+    mockPrisma.product.create.mockRejectedValue(error)
+    
+    await expect(createProduct({ name: 'Test', slug: 'test' }))
+      .rejects
+      .toThrow('Product with this slug already exists')
+  })
+})
+
+### 3.6 Performance Considerations - OPTIMIZED QUERIES
+
+// Avoid N+1 query problems
+export async function findProductsWithRelations(): Promise<ProductWithRelations[]> {
+  return await prisma.product.findMany({
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      // Only select needed fields
+    },
+    take: 20, // Pagination
+    skip: 0,
+  })
+}
+
+// Use distinct for unique results
+export async function findDistinctCategories(): Promise<string[]> {
+  const result = await prisma.product.findMany({
+    distinct: ['categoryId'],
+    select: {
+      category: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  })
+  
+  return result.map(item => item.category.name)
+}
+
+---
+
+## 4. REACT & COMPONENT ARCHITECTURE
+
+### 4.1 React Best Practices - MANDATORY
+
+#### Component Architecture
+- Use *functional components* with TypeScript interfaces
+- Define components using the function keyword
+- Extract reusable logic into custom hooks
+- Implement proper component composition
+- Use React.memo() strategically for performance
+- Implement proper cleanup in useEffect hooks
+- Use JSDoc to document public classes and methods
+- Maintain a single export per file
+- Write self-documenting, intention-revealing code
+
+#### React Performance Optimization
+- Use useCallback for memoizing callback functions
+- Implement useMemo for expensive computations
+- *Avoid inline function definitions in JSX*
+- Implement code splitting using dynamic imports
+- Implement proper key props in lists (*avoid using index as key*)
+
+### 4.2 Component Composition (Open/Closed Principle)
+// Base components (closed for modification, open for extension)
+<Card>
+  <Card.Header>
+    <Card.Title />
+    <Card.Actions />
+  </Card.Header>
+  <Card.Content />
+</Card>
+
+// Extended components (composition over inheritance)
+<ProductCard product={product}>
+  <ProductImage />
+  <ProductDetails />
+  <AddToCartButton />
+</ProductCard>
+
+### 4.3 Props Interface Design (Interface Segregation)
+// CORRECT: Segregated interfaces for specific needs
+interface ProductDisplayProps {
+  product: ProductType
+  showPrice: boolean
+}
+
+interface ProductActionsProps {
+  productId: string
+  onAddToCart: () => void
+}
+
+// INCORRECT: Fat interface with multiple responsibilities
+interface ProductProps {
+  product: ProductType
+  showPrice: boolean
+  onAddToCart: () => void
+  onEdit: () => void
+  onDelete: () => void // ❌ Too many responsibilities
+}
+
+### 4.4 State Management Hierarchy (Single Responsibility)
+
+#### Local State
+- Use useState for component-level state
+- Implement useReducer for complex state logic
+- Use useContext for shared state between components
+- Implement proper state initialization
+
+#### Global State 
+- Use Redux Toolkit for complex global state
+- Use createSlice to define state, reducers, and actions together
+- Avoid using createReducer and createAction unless necessary
+- *Normalize state structure* to avoid deeply nested data
+- Use selectors to encapsulate state access
+- Avoid large, all-encompassing slices; separate concerns by feature
+
+#### State Hierarchy (Order of Preference)
+1. *Server State*: SWR/React Query for backend data (handled by hooks)
+2. *Global State*: React Context for authentication, tenant, theme
+3. *Local State*: useState/useReducer for component-specific state only
+4. *URL State*: Next.js router for navigation and filters
+
+---
+
+## 5. TYPESCRIPT & CODE QUALITY
+
+### 5.1 TypeScript Implementation - ZERO TOLERANCE
+- *Enable strict mode* - zero type errors allowed
+- *Interface over Type*: Use interfaces for object shapes, especially when extending
+- *Avoid Enums*: Use const objects with 'as const' assertion
+- *Generic Constraints*: Use extends for type safety
+- Define clear interfaces for component props, state, and Redux state structure
+- *Use type guards* to handle potential undefined or null values safely
+- Apply generics to functions, actions, and slices where type flexibility is needed
+- *Utilize TypeScript utility types* (Partial, Pick, Omit) for cleaner and reusable code
+- Use mapped types for creating variations of existing types dynamically
+- Always declare explicit types for variables and functions
+- Avoid using "any"
+- Create precise, descriptive types
+
+// CORRECT: Interface with proper generics
+interface ApiResponse<T> {
+  data: T
+  success: boolean
+  message: string
+}
+
+// CORRECT: Const object instead of enum
+const ProductStatus = {
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+  PENDING: 'pending'
+} as const
+
+type ProductStatusType = typeof ProductStatus[keyof typeof ProductStatus]
+
+// CORRECT: Prisma type integration
+interface ProductWithCategory extends Product {
+  category: Category
+}
+
+### 5.2 Functions - SINGLE PURPOSE & DESCRIPTIVE
+
+#### Function Design Principles
+- Write concise, single-purpose functions (aim for less than 20 lines)
+- Name functions descriptively with a verb
+- Minimize function complexity:
+  - Use early returns
+  - Extract complex logic to utility functions
+- Leverage functional programming techniques:
+  - Prefer map, filter, reduce
+  - Use arrow functions for simple operations
+  - Use named functions for complex logic
+- Use object parameters for multiple arguments
+- Maintain a single level of abstraction
+
+// CORRECT: Single-purpose, well-named function
+async function calculateDiscountedPrice(
+  product: Product,
+  discountRate: number
+): Promise<number> {
+  if (discountRate < 0 || discountRate > 1) {
+    throw new Error('Discount rate must be between 0 and 1')
+  }
+  
+  const basePrice = product.price.toNumber()
+  return basePrice * (1 - discountRate)
+}
+
+// CORRECT: Object parameters for multiple arguments
+interface CreateProductParams {
+  name: string
+  slug: string
+  price: number
+  categoryId: string
+}
+
+async function createProductService(params: CreateProductParams): Promise<Product> {
+  return await prisma.product.create({
+    data: {
+      ...params,
+      price: new Prisma.Decimal(params.price),
+    },
+  })
+}
+
+### 5.3 Data Handling - IMMUTABLE & VALIDATED
+
+#### Data Encapsulation
+- Encapsulate data in composite types
+- Prefer immutability:
+  - Use readonly for unchanging data
+  - Use as const for literal values
+- Validate data at the boundaries
+
+// CORRECT: Immutable data types
+interface ReadonlyProduct {
+  readonly id: string
+  readonly name: string
+  readonly price: Prisma.Decimal
+  readonly createdAt: Date
+}
+
+// CORRECT: Const assertions
+const ProductCategories = {
+  ELECTRONICS: 'electronics',
+  CLOTHING: 'clothing',
+  BOOKS: 'books',
+} as const
+
+// CORRECT: Boundary validation with Zod
+import { z } from 'zod'
+
+const CreateProductSchema = z.object({
+  name: z.string().min(1, 'Product name is required'),
+  slug: z.string().regex(/^[a-z0-9-]+$/, 'Invalid slug format'),
+  price: z.number().positive('Price must be positive'),
+  categoryId: z.string().uuid('Invalid category ID'),
+})
+
+type CreateProductInput = z.infer<typeof CreateProductSchema>
+
+### 5.4 Error Handling Pattern - CONTEXTUAL & SPECIFIC
+
+// Service Layer: Transform errors, don't handle them
+export async function getProducts(): Promise<ProductType[]> {
+  try {
+    const response = await clientFetcher('/api/products')
+    return response.data
+  } catch (error) {
+    // Transform error, let hooks handle it
+    throw new Error(`Failed to fetch products: ${error.message}`)
+  }
+}
+
+// Hook Layer: Handle errors with state
+export function useProducts() {
+  const { data, error, isLoading } = useSWR('/api/products', getProducts)
+  
+  return {
+    products: data ?? [],
+    error: error?.message,
+    isLoading
+  }
+}
+
+// Component Layer: Display error states
+export function ProductList() {
+  const { products, error, isLoading } = useProducts()
+  
+  if (error) return <ErrorMessage message={error} />
+  if (isLoading) return <LoadingSkeleton />
+  
+  return (
+    <div>
+      {products.map(product => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+    </div>
+  )
+}
+
+// Prisma Error Handling
+export function handlePrismaError(error: unknown): string {
+  if (error instanceof PrismaClientKnownRequestError) {
+    // Provide context in error messages
+    switch (error.code) {
+      case 'P2002':
+        return `Unique constraint violation: ${error.meta?.target}`
+      case 'P2014':
+        return 'Required relation constraint failed'
+      default:
+        return `Database error (${error.code}): ${error.message}`
+    }
+  }
+  
+  // Log errors with sufficient context
+  console.error('Unexpected database error:', error)
+  return 'An unexpected database error occurred'
+}
+
+---
+
+## 6. NEXT.JS BEST PRACTICES & OPTIMIZATION
+
+### 6.1 Next.js Core Concepts
+- *Utilize App Router* for routing and navigation
+- Implement proper metadata management with built-in SEO support
+- Use proper caching strategies (static, dynamic, revalidation)
+- Implement proper error boundaries and error handling
+- Use *Next.js built-in components*:
+  - Image component for optimized images
+  - Link component for client-side navigation
+  - Script component for external scripts
+  - Head component for metadata
+- Implement proper loading states and progressive enhancement
+- *Favour using React Server Components and Next.js SSR features where possible*
+- *Minimize the usage of client components ('use client') to small, isolated components*
+
+### 6.2 Server Components First (Liskov Substitution)
+- *Default*: Use Server Components for data fetching
+- Use *URL query parameters* for data fetching and server state management
+- *Client Components*: Use 'use client' directive only when necessary:
+  - Event listeners (onClick, onChange, etc.)
+  - Browser APIs (localStorage, geolocation, etc.)
+  - State management (useState, useReducer)
+  - Client-side-only libraries
+- *Substitution*: Client components should work where Server components work
+- *Always add loading and error states to data fetching components*
+
+// CORRECT: Server Component for data fetching with Prisma
+import { findProducts } from '@/services/product.prisma'
+
+export default async function ProductsPage() {
+  try {
+    const products = await findProducts() // Direct Prisma service call
+    return <ProductList products={products} />
+  } catch (error) {
+    return <ErrorMessage message="Failed to load products" />
+  }
+}
+
+// CORRECT: Client Component only for interactivity
+'use client'
+export function AddToCartButton({ productId }: { productId: string }) {
+  const [isLoading, setIsLoading] = useState(false)
+  
+  return (
+    <Button 
+      onClick={() => addToCartAction(productId)} 
+      disabled={isLoading}
+    >
+      Add to Cart
+    </Button>
+  )
+}
+
+### 6.3 Code Splitting Strategy
+- *Route-based*: Automatic by Next.js App Router
+- *Component-based*: Dynamic imports for heavy components
+- *Library-based*: Separate bundles for large dependencies
+
+// Lazy load heavy components
+const HeavyChart = dynamic(() => import('./heavy-chart'), {
+  loading: () => <ChartSkeleton />,
+  ssr: false
+})
+
+### 6.4 Caching & Optimization
+- *Static Generation*: Pre-build pages where possible
+- *SWR Caching*: Intelligent client-side data caching
+- *Image Optimization*: Next.js Image component with proper sizing
+- *Bundle Analysis*: Regular monitoring with @next/bundle-analyzer
+
+---
+
+## 7. SUPABASE INTEGRATION PATTERNS
+
+### 7.1 Supabase with Next.js 14 Integration
+- Use Supabase for authentication, real-time features, and edge functions
+- Integrate Supabase client with Next.js App Router
+- Implement proper server-side and client-side Supabase clients
+- Use Supabase Auth with Next.js middleware for route protection
+
+// lib/supabase/client.ts - Client-side Supabase
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+
+export const supabase = createClientComponentClient()
+
+// lib/supabase/server.ts - Server-side Supabase
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+
+export const createServerSupabase = () => 
+  createServerComponentClient({ cookies })
+
+### 7.2 Supabase + Prisma Hybrid Architecture
+- Use Prisma for complex relational data operations
+- Use Supabase for authentication, real-time features, and simple queries
+- Maintain data consistency between both systems
+
+// services/hybrid-auth.service.ts
+import { supabase } from '@/lib/supabase/client'
+import { prisma } from '@/lib/prisma'
+
+export async function authenticateUser(email: string, password: string) {
+  // Supabase for authentication
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+  
+  if (authError) throw authError
+  
+  // Prisma for user profile data
+  const userProfile = await prisma.user.findUnique({
+    where: { email },
+    include: { profile: true },
+  })
+  
+  return {
+    user: authData.user,
+    profile: userProfile,
+  }
+}
+
+---
+
+## 8. UI, STYLING & DESIGN SYSTEMS
+
+### 8.1 Component Libraries & Design Systems
+- *Use Shadcn UI* for consistent, accessible component design
+- *Integrate Radix UI primitives* for customizable, accessible UI elements
+- Apply composition patterns to create modular, reusable components
+- Maintain component library documentation and examples
+
+### 8.2 Styling Guidelines - MANDATORY
+- *Use Tailwind CSS* for utility-first, maintainable styling
+- *Design with mobile-first*, responsive principles for flexibility across devices
+- Implement dark mode using CSS variables or Tailwind's dark mode features
+- *Ensure color contrast ratios* meet accessibility standards (WCAG 2.1 AA)
+- Maintain consistent spacing values to establish visual harmony
+- *Define CSS variables* for theme colors and spacing to support easy theming
+
+/* Example: CSS variables for theming */
+:root {
+  --color-primary: #3b82f6;
+  --color-secondary: #64748b;
+  --spacing-unit: 0.25rem;
+  --border-radius: 0.375rem;
+}
+
+---
+
+## 9. ERROR HANDLING & VALIDATION
+
+### 9.1 Form Validation
+- *Use Zod* for schema validation and type safety
+- Implement proper error messages with clear user guidance
+- Use proper form libraries (e.g., React Hook Form)
+- Validate on both client and server sides
+- *Implement error handling and error logging*
+
+### 9.2 Error Boundaries & Error Handling
+- *Use error boundaries* to catch and handle errors in React component trees gracefully
+- *Log caught errors* to external service (e.g., Sentry) for tracking and debugging
+- *Design user-friendly fallback UIs* to display when errors occur
+- Implement proper error recovery mechanisms
+- Handle network errors and API failures gracefully
+
+// Example: Error boundary component
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundaryProvider
+      fallback={<ErrorFallback />}
+      onError={(error) => logErrorToService(error)}
+    >
+      {children}
+    </ErrorBoundaryProvider>
+  )
+}
+
+### 9.3 Global Error Handling
+- Use global error handling where appropriate
+- Log errors with sufficient context
+- Use specific, descriptive error types
+- Provide context in error messages
+
+// Global error handler for Prisma operations
+export class DatabaseError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+    public readonly operation?: string
+  ) {
+    super(message)
+    this.name = 'DatabaseError'
+  }
+}
+
+export function handleDatabaseOperation<T>(
+  operation: () => Promise<T>,
+  context: string
+): Promise<T> {
+  return operation().catch((error) => {
+    const errorMessage = handlePrismaError(error)
+    throw new DatabaseError(
+      `${context}: ${errorMessage}`,
+      error.code,
+      context
+    )
+  })
+}
+
+---
+
+## 10. ACCESSIBILITY (A11Y) - MANDATORY
+
+### 10.1 Core Accessibility Requirements
+- *Use semantic HTML* for meaningful structure
+- *Apply accurate ARIA attributes* where needed
+- *Ensure full keyboard navigation* support
+- *Manage focus order* and visibility effectively
+- *Maintain accessible color contrast* ratios (4.5:1 minimum)
+- *Follow logical heading hierarchy* (h1 → h2 → h3)
+- *Make all interactive elements accessible*
+- *Provide clear and accessible error feedback*
+- *Use semantic HTML elements where possible*
+
+### 10.2 Accessibility Testing & Validation
+- Test with screen readers (NVDA, JAWS, VoiceOver)
+- Validate with automated tools (axe, Lighthouse)
+- Perform keyboard-only navigation testing
+- Test with users who have disabilities when possible
+
+// Example: Accessible form component
+interface AccessibleFormProps {
+  onSubmit: (data: FormData) => void
+  errors?: Record<string, string>
+}
+
+export function AccessibleForm({ onSubmit, errors }: AccessibleFormProps) {
+  return (
+    <form onSubmit={onSubmit} noValidate>
+      <div>
+        <label htmlFor="email" className="sr-only">
+          Email Address
+        </label>
+        <input
+          id="email"
+          type="email"
+          required
+          aria-describedby={errors?.email ? "email-error" : undefined}
+          aria-invalid={errors?.email ? "true" : "false"}
+          placeholder="Enter your email"
+        />
+        {errors?.email && (
+          <div id="email-error" role="alert" className="text-red-600">
+            {errors.email}
+          </div>
+        )}
+      </div>
+    </form>
+  )
+}
+
+---
+
+## 11. SECURITY & PERFORMANCE
+
+### 11.1 Security Best Practices
+- *Implement input sanitization* to prevent XSS attacks
+- *Use DOMPurify* for sanitizing HTML content
+- Use proper authentication and authorization methods
+- Implement CSRF protection for forms
+- Validate and sanitize all user inputs
+- Use HTTPS everywhere and secure headers
+- *Never expose raw Prisma client in APIs*
+- *Use input validation before database operations*
+- *Implement row-level security*
+- *Use Prisma's built-in protections against SQL injection*
+
+// Example: Secure API route with input validation
+import { z } from 'zod'
+import { NextRequest, NextResponse } from 'next/server'
+import { createProduct } from '@/services/product.prisma'
+
+const CreateProductSchema = z.object({
+  name: z.string().min(1).max(100),
+  slug: z.string().regex(/^[a-z0-9-]+$/),
+  price: z.number().positive(),
+  categoryId: z.string().uuid(),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    
+    // Input validation before database operations
+    const validatedData = CreateProductSchema.parse(body)
+    
+    // Sanitize inputs
+    const sanitizedData = {
+      ...validatedData,
+      name: DOMPurify.sanitize(validatedData.name),
+    }
+    
+    const product = await createProduct(sanitizedData)
+    
+    return NextResponse.json({ success: true, data: product })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, errors: error.errors },
+        { status: 400 }
+      )
+    }
+    
+    return NextResponse.json(
+      { success: false, message: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+### 11.2 Performance Considerations
+- *Use select and include judiciously* in Prisma queries
+- *Avoid N+1 query problems*
+- *Use findMany with take and skip for pagination*
+- *Leverage Prisma's distinct for unique results*
+- *Profile and optimize database queries*
+
+// Performance-optimized Prisma queries
+export async function getProductsWithPagination(
+  page: number = 1,
+  limit: number = 20
+): Promise<{ products: Product[]; total: number }> {
+  const skip = (page - 1) * limit
+  
+  // Parallel queries for better performance
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        price: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      skip,
+      take: limit,
+    }),
+    prisma.product.count({
+      where: {
+        deletedAt: null,
+      },
+    }),
+  ])
+  
+  return { products, total }
+}
+
+### 11.3 Internationalization (i18n)
+- Use next-i18next for translations and localization
+- Implement proper locale detection and routing
+- Use proper number and date formatting for locales
+- Implement proper RTL (Right-to-Left) support
+- Use proper currency formatting for different regions
+
+---
+
+## 12. TESTING & QUALITY GATES
+
+### 12.1 Unit Testing - MANDATORY
+- *Write thorough unit tests* to validate individual functions and components
+- *Use Jest and React Testing Library* for reliable testing
+- *Follow Arrange-Act-Assert pattern* for clarity and consistency
+- *Mock external dependencies* and API calls to isolate unit tests
+- *Test edge cases* and error scenarios
+- *Use in-memory database for unit tests*
+- *Mock Prisma client for isolated testing*
+- *Use factory methods for test data generation*
+
+### 12.2 Testing Prisma Code
+// __tests__/product.service.test.ts
+import { PrismaClient } from '@prisma/client'
+import { mockDeep, mockReset, DeepMockProxy } from 'jest-mock-extended'
+import { findProducts, createProduct } from '@/services/product.prisma'
+
+// Mock Prisma client
+jest.mock('@/lib/prisma', () => ({
+  __esModule: true,
+  prisma: mockDeep<PrismaClient>(),
+}))
+
+const mockPrisma = prisma as unknown as DeepMockProxy<PrismaClient>
+
+beforeEach(() => {
+  mockReset(mockPrisma)
+})
+
+describe('Product Service', () => {
+  // Test successful operations
+  test('findProducts returns products with category', async () => {
+    const mockProducts = [
+      {
+        id: '1',
+        name: 'Test Product',
+        slug: 'test-product',
+        price: new Prisma.Decimal(99.99),
+        category: { id: '1', name: 'Test Category' },
+      },
+    ]
+    
+    mockPrisma.product.findMany.mockResolvedValue(mockProducts)
+    
+    const result = await findProducts()
+    
+    expect(result).toEqual(mockProducts)
+    expect(mockPrisma.product.findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      include: { category: true },
+      orderBy: { createdAt: 'desc' },
+    })
+  })
+  
+  // Test error cases
+  test('createProduct handles unique constraint violation', async () => {
+    const error = new PrismaClientKnownRequestError(
+      'Unique constraint failed',
+      {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+      }
+    )
+    
+    mockPrisma.product.create.mockRejectedValue(error)
+    
+    await expect(createProduct({ 
+      name: 'Test', 
+      slug: 'test',
+      price: new Prisma.Decimal(99.99),
+      categoryId: '1'
+    })).rejects.toThrow('Product with this slug already exists')
+  })
+  
+  // Test edge conditions
+  test('findProducts handles empty results', async () => {
+    mockPrisma.product.findMany.mockResolvedValue([])
+    
+    const result = await findProducts()
+    
+    expect(result).toEqual([])
+  })
+})
+
+### 12.3 Integration Testing
+- *Focus on user workflows* to ensure app functionality
+- Set up and tear down test environments properly
+- Use snapshot testing selectively for UI regression detection
+- Leverage testing utilities (screen in RTL) for cleaner tests
+- *Implement integration tests with actual database*
+
+// __tests__/integration/product-workflow.test.ts
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { ProductList } from '@/components/product-list'
+import { useProducts } from '@/hooks/useProducts'
+
+// Mock the hook
+jest.mock('@/hooks/useProducts')
+const mockUseProducts = useProducts as jest.MockedFunction<typeof useProducts>
+
+describe('Product Workflow', () => {
+  test('displays products and handles add to cart', async () => {
+    // Arrange
+    const mockProducts = [
+      { id: '1', name: 'Test Product', price: 99.99 },
+    ]
+    
+    mockUseProducts.mockReturnValue({
+      products: mockProducts,
+      error: null,
+      isLoading: false,
+    })
+    
+    // Act
+    render(<ProductList />)
+    
+    // Assert
+    expect(screen.getByText('Test Product')).toBeInTheDocument()
+    
+    const addToCartButton = screen.getByRole('button', { name: /add to cart/i })
+    fireEvent.click(addToCartButton)
+    
+    await waitFor(() => {
+      expect(screen.getByText(/added to cart/i)).toBeInTheDocument()
+    })
+  })
+})
+
+### 12.4 Testing Strategy (Dependency Inversion)
+// Test hooks independently of components
+import { renderHook } from '@testing-library/react'
+import { useProducts } from '../hooks/useProducts'
+
+test('useProducts returns products data', async () => {
+  const { result } = renderHook(() => useProducts())
+  await waitFor(() => expect(result.current.products).toBeDefined())
+})
+
+// Test components with mocked hooks
+import { ProductList } from '../components/product-list'
+jest.mock('../hooks/useProducts')
+
+test('ProductList renders products', () => {
+  (useProducts as jest.Mock).mockReturnValue({
+    products: mockProducts,
+    error: null,
+    isLoading: false
+  })
+  
+  render(<ProductList />)
+  expect(screen.getByText('Product 1')).toBeInTheDocument()
+})
+
+### 12.5 Code Quality Standards - ZERO WARNINGS
+- *ESLint*: Custom rules with zero warnings policy
+- *Prettier*: Automated formatting on save
+- *TypeScript*: Strict mode with zero errors
+- *Testing*: Minimum 80% coverage for critical paths
+
+---
+
+## 13. DOCUMENTATION STANDARDS
+
+### 13.1 Code Documentation - MANDATORY
+- *Use JSDoc* for all public functions, classes, methods, and interfaces
+- *Document all public APIs* with examples when appropriate
+- Use complete sentences with proper punctuation
+- Keep descriptions clear and concise
+- Include parameter types, return types, and examples
+
+/**
+ * Calculates the total price including tax for a shopping cart.
+ * 
+ * @param items - Array of cart items with price and quantity
+ * @param taxRate - Tax rate as decimal (e.g., 0.08 for 8%)
+ * @returns The total price including tax, rounded to 2 decimal places
+ * 
+ * @example
+ * ```typescript
+ * const total = calculateCartTotal([
+ *   { price: 10.99, quantity: 2 },
+ *   { price: 5.50, quantity: 1 }
+ * ], 0.08)
+ * console.log(total) // 28.83
+ * 
+ */
+function calculateCartTotal(items: CartItem[], taxRate: number): number {
+  // Implementation...
+}
+
+/**
+ * Creates a new product in the database with category relation.
+ * 
+ * @param data - Product creation data including name, slug, price, and categoryId
+ * @returns Promise resolving to the created product with category included
+ * 
+ * @throws {DatabaseError} When unique constraint is violated or category not found
+ * 
+ * @example
+ * 
+ * const product = await createProduct({
+ *   name: 'New Product',
+ *   slug: 'new-product',
+ *   price: 29.99,
+ *   categoryId: 'category-uuid'
+ * })
+ * 
+ */
+async function createProduct(data: CreateProductInput): Promise<ProductWithCategory> {
+  // Implementation...
+}
+
+### 13.2 Project Documentation
+- Use proper markdown formatting for README files
+- Include setup instructions and development workflow
+- Document API endpoints and data schemas
+- Provide troubleshooting guides
+- Keep documentation up-to-date with code changes
+- **Be sure to reference file names**
+- **Be concise. Minimize any other prose**
+
+---
+
+## 14. DEVELOPMENT WORKFLOW
+
+### 14.1 Prisma Development Workflow
+- Use version control (Git)
+- Implement comprehensive test coverage
+- Use continuous integration
+- Perform regular code reviews
+- Keep dependencies up to date
+- **Create migrations for schema changes**
+- **Use descriptive migration names**
+- **Review migrations before applying**
+- **Never modify existing migrations**
+- **Keep migrations idempotent**
+
+### 14.2 Development Commands
+```bash
+# Next.js commands
+npm run dev          # Development with Turbopack
+npm run build        # Production build
+npm run lint         # ESLint with zero warnings
+npm run test         # Jest test suite
+npm run type-check   # TypeScript validation
+npm run analyze      # Bundle size analysis
+
+# Prisma commands
+npx prisma generate  # Generate Prisma client
+npx prisma db push   # Push schema changes (dev only)
+npx prisma migrate dev --name <name>  # Create and apply migration
+npx prisma migrate deploy  # Apply migrations (production)
+npx prisma studio    # Database browser
+npx prisma db seed   # Run seed script
+
+# Combined workflow
+npm run db:reset     # Reset database with fresh migrations
+npm run db:seed      # Populate with seed data
+
+### 14.3 Pre-commit Checks - MANDATORY
+1. TypeScript compilation success
+2. ESLint zero warnings
+3. Test suite passes
+4. Prettier formatting applied
+5. Accessibility validation
+6. Security scan completion
+7. Prisma schema validation
+8. Migration review (if applicable)
+
+---
+
+## 15. CODING STYLE & REPOSITORY PATTERNS
+
+### 15.1 Prisma Repository Pattern
+- *Keep Prisma-related code in dedicated repositories/modules*
+- *Separate data access logic from business logic*
+- *Create repository patterns for complex queries*
+- *Use dependency injection for Prisma services*
+
+// repositories/product.repository.ts
+import { prisma } from '@/lib/prisma'
+import type { Product, Prisma } from '@prisma/client'
+
+export class ProductRepository {
+  private prisma = prisma
+
+  async findById(id: string): Promise<Product | null> {
+    return await this.prisma.product.findUnique({
+      where: { id },
+      include: { category: true },
+    })
+  }
+
+  async findMany(params: {
+    skip?: number
+    take?: number
+    where?: Prisma.ProductWhereInput
+    orderBy?: Prisma.ProductOrderByWithRelationInput
+  }): Promise<Product[]> {
+    const { skip, take, where, orderBy } = params
+    
+    return await this.prisma.product.findMany({
+      skip,
+      take,
+      where: {
+        deletedAt: null,
+        ...where,
+      },
+      orderBy,
+      include: {
+        category: true,
+      },
+    })
+  }
+
+  async create(data: Prisma.ProductCreateInput): Promise<Product> {
+    return await this.prisma.product.create({
+      data,
+      include: { category: true },
+    })
+  }
+
+  async update(
+    id: string, 
+    data: Prisma.ProductUpdateInput
+  ): Promise<Product> {
+    return await this.prisma.product.update({
+      where: { id },
+      data,
+      include: { category: true },
+    })
+  }
+
+  async softDelete(id: string): Promise<Product> {
+    return await this.prisma.product.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
+  }
+}
+
+// Dependency injection
+export const productRepository = new ProductRepository()
+
+### 15.2 Code Quality Principles
+- *Follow SOLID principles*
+- *Prefer composition over inheritance*
+- *Write clean, readable, and maintainable code*
+- *Continuously refactor and improve code structure*
+- *Focus on readability over being performant*
+- *Fully implement all requested functionality*
+- *Leave NO todo's, placeholders or missing pieces in the code*
+
+---
+
+## 16. BREAKING CHANGE PROTOCOL
+
+When making architectural changes:
+1. *Update architecture documentation*: Document pattern changes
+2. *Migration Guide*: Provide clear upgrade path
+3. *Team Communication*: Notify affected developers
+4. *Gradual Rollout*: Use feature flags for large changes
+5. *Database Migration Strategy*: Plan schema changes carefully
+6. *Backward Compatibility*: Maintain API contracts when possible
+
+---
+
+## 17. FORBIDDEN PATTERNS
+
+### ❌ NEVER DO THESE:
+// Direct API calls in components
+function ProductList() {
+  useEffect(() => {
+    fetch('/api/products') // ❌ NEVER
+  }, [])
+}
+
+// Business logic in components
+function ProductCard({ product }) {
+  const discountedPrice = product.price * 0.9 // ❌ NEVER - use service/hook
+}
+
+// Mixed client/server patterns
+'use client'
+export default function Page() {
+  const data = await fetch() // ❌ NEVER - mixing paradigms
+}
+
+// Direct state mutations
+function updateProduct(id, data) {
+  setState(prev => ({ ...prev, [id]: data })) // ❌ NEVER - use Server Action
+}
+
+// Modifying existing Prisma migrations
+// ❌ NEVER modify migrations after they're applied
+
+// Exposing Prisma client directly in API routes
+export async function GET() {
+  return NextResponse.json(await prisma.product.findMany()) // ❌ NEVER
+}
+
+// Using 'any' type
+function processData(data: any) { // ❌ NEVER
+  // ...
+}
+
+// Inline styles or large style objects
+<div style={{ backgroundColor: 'red', padding: '20px' }}> // ❌ NEVER
+
+### ✅ ALWAYS DO THESE:
+- Follow the four-layer architecture
+- Use proper error boundaries
+- Implement loading states
+- Type everything strictly
+- Test each layer independently
+- Document breaking changes
+- Use Prisma transactions for complex operations
+- Validate input data before database operations
+- Handle Prisma errors specifically
+- Use meaningful migration names
+- Implement soft delete patterns
+- Use repository patterns for complex queries
+- Separate data access from business logic
+- Follow SOLID principles in all code
+- Write self-documenting code
+- Use semantic HTML elements
+- Implement proper accessibility
+- Add comprehensive error handling
+- Use proper TypeScript types throughout
+
+---
+
+## 18. DEVELOPMENT QUALITY CHECKLIST
+
+### ✅ Before Code Review:
+- [ ] TypeScript strict mode enabled with zero errors
+- [ ] ESLint passes with zero warnings
+- [ ] All tests pass (unit, integration, accessibility)
+- [ ] Proper error handling implemented
+- [ ] Loading states added to all data fetching
+- [ ] Input validation on both client and server
+- [ ] Accessibility requirements met
+- [ ] Prisma schema changes have migrations
+- [ ] Database queries are optimized
+- [ ] Security best practices followed
+- [ ] Documentation updated (if applicable)
+- [ ] No unused variables or imports
+- [ ] Proper semantic HTML used
+- [ ] Component names use kebab-case
+- [ ] Functions follow single responsibility principle
+- [ ] Error boundaries implemented where needed
+
+### ✅ Architecture Compliance:
+- [ ] Four-layer architecture followed
+- [ ] SOLID principles applied
+- [ ] Dependency inversion maintained
+- [ ] Service layer only handles API communication
+- [ ] Hooks handle state and read operations
+- [ ] Server Actions handle mutations
+- [ ] Components focus only on UI presentation
+- [ ] Prisma operations are properly typed
+- [ ] Error handling is contextual and specific
+- [ ] Repository patterns used for complex queries
+
+---
+
+*Remember*: This comprehensive architecture prioritizes maintainability, scalability, type safety, and developer experience. Every pattern serves a purpose in creating a robust, enterprise-grade full-stack application with Next.js, Prisma, and Supabase. The combination of these technologies, when used according to these standards, creates a powerful, secure, and maintainable development stack.
+
+*Key Integration Points*:
+- *Prisma* provides type-safe database operations with excellent TypeScript integration
+- *Supabase* offers authentication, real-time features, and edge functions
+- *Next.js 14* provides the full-stack framework with App Router
+- *SOLID Principles* ensure maintainable and scalable code architecture
+- *Four-Layer Architecture* maintains clear separation of concerns
+
+This standard ensures consistent, high-quality code across all team members and projects.

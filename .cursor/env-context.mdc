@@ -1,0 +1,38 @@
+---
+alwaysApply: true
+---
+
+
+# Environment variables reference (sanitized)
+#
+# This file intentionally redacts secrets and organizes keys by use case so
+# AI agents can reason about purpose, scope, and usage without exposing values.
+# Replace placeholders in your real environment (.env, CI secrets), not here.
+
+
+## Database (Server-only)
+# Purpose: Primary pooled connection for application runtime via PgBouncer
+# Scope: Server (NEVER exposed to client)
+# Example shape (no real creds):
+DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<POOLER_HOST>:6543/<DB_NAME>?pgbouncer=true"
+
+# Purpose: Direct connection for admin/migrations (no pooling)
+# Scope: Server/CLI only (e.g., Prisma migrations)
+# Example shape (no real creds):
+DIRECT_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<PRIMARY_HOST>:5432/<DB_NAME>"
+
+
+## Supabase (Client-safe public + Server)
+# Purpose: Supabase project URL
+# Scope: Public (can be exposed to client)
+NEXT_PUBLIC_SUPABASE_URL="https://<PROJECT_REF>.supabase.co"
+
+# Purpose: Supabase anonymous public key for client-side access
+# Scope: Public, but treat as a credential (rotate if leaked)
+NEXT_PUBLIC_SUPABASE_ANON_KEY="<PUBLIC_ANON_JWT>"
+
+
+## Conventions
+# - Store real values in OS/CI secrets or .env.local (not committed).
+# - Public keys prefixed with NEXT_PUBLIC_ may be used by the browser.
+# - Server-only secrets must never be referenced in client bundles.

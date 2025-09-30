@@ -1,0 +1,19 @@
+---
+alwaysApply: true
+---
+
+Frontend: Next.js + Tailwind (hosted on Vercel free tier)
+
+Backend/DB/Auth: Supabase postgreSQL (free tier)
+
+ORM: prisma
+
+Chatbot: Rule-based JSON → Supabase CRUD for admin editing
+
+PDF Generation: jsPDF / pdf-lib (serverless function via Next.js API routes)
+
+Charts/Dashboard: Shadcn charts (free + light)
+
+Component library: ShadCN
+
+Notifications: Supabase Edge Functions + Resend (free emails)

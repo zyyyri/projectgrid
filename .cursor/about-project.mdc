@@ -1,0 +1,221 @@
+---
+alwaysApply: true
+---
+
+# Pitogo Elementary Appointment & Document System — Waterfall SLC Implementation Plan
+
+## Section 1: Human-Readable Hierarchical Task Tree
+
+---
+
+### A. Project Initialization
+1. Repository Setup
+   a) Monorepo Init
+      i) Initialize project with Next.js, Tailwind, Supabase SDK
+         - **Purpose**: Create base monorepo and app skeleton
+         - **Why**: Foundation for frontend/backend tasks
+         - **Exact Commands**:
+           ```bash
+           npx create-next-app pitogo-system --typescript --tailwind --eslint
+           cd pitogo-system
+           npm install @supabase/supabase-js @shadcn/ui jspdf pdf-lib recharts resend
+           ```
+         - **Files to Create/Modify**:
+           - `package.json` (auto-generated)
+           - `tailwind.config.js`
+           - `.env.local`
+             ```env
+             NEXT_PUBLIC_SUPABASE_URL=xxx
+             NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+             SUPABASE_SERVICE_ROLE_KEY=xxx
+             RESEND_API_KEY=xxx
+             ```
+         - **Acceptance Criteria**: `npm run dev` runs successfully, default Next.js homepage loads.
+         - **Edge Cases**: Wrong Supabase credentials → app should fail gracefully with error message.
+
+---
+
+### B. Database Setup (Supabase)
+1. Auth & Roles
+   a) Create roles: Guest, Staff, Super Admin
+      i) Add policies for RBAC
+         - **Purpose**: Secure data access
+         - **Why**: Prevent unauthorized data leaks
+         - **Exact Commands**:
+           ```sql
+           create policy "Allow staff" on documents for select using (auth.role() = 'staff');
+           ```
+         - **Files to Modify**: `supabase/migrations/001_init.sql`
+         - **Acceptance Criteria**: Users with different roles only see their permitted tables.
+         - **Edge Cases**: Unauthorized attempt returns 403.
+
+2. Tables
+   a) Document Indexing
+      i) Create `sf10_records`, `form18e_records`
+         - **Purpose**: Store metadata (name, year, file_location)
+         - **Why**: Searchable index reduces manual lookup
+         - **Commands**:
+           ```sql
+           create table sf10_records (
+             id uuid primary key default gen_random_uuid(),
+             student_name text not null,
+             year int,
+             cabinet_location text
+           );
+           ```
+         - **Files**: `supabase/migrations/002_tables.sql`
+         - **Acceptance Criteria**: Insert + query works.
+         - **Edge Cases**: Duplicate student name → handled with `year` as secondary key.
+
+---
+
+### C. Frontend - User Portal (Next.js + Tailwind)
+1. Landing Page
+   a) Build public landing page
+      i) Include school intro, request CTA
+         - **Purpose**: Entry point
+         - **Why**: Transparency & UX
+         - **Files**: `app/page.tsx`
+         - **Acceptance Criteria**: Landing loads with CTA button linking to /request
+
+2. Request Documents Page
+   a) Form UI
+      i) Inputs: Name, Grade, Document Type
+         - **Purpose**: Allow user to submit request
+         - **Why**: Digitize manual form
+         - **Files**: `app/request/page.tsx`
+         - **Acceptance Criteria**: Form submits to Supabase table
+         - **Edge Cases**: Empty inputs → client-side validation
+
+---
+
+### D. Admin Portal (Super Admin)
+1. Dashboard
+   a) Metrics visualization
+      i) ShadcnChart integration
+         - **Purpose**: Show performance + citizen charter survey results
+         - **Why**: Transparency
+         - **Files**: `app/admin/dashboard/page.tsx`
+         - **Acceptance Criteria**: Admin sees charts populated from Supabase.
+
+2. Request Management
+   a) View all requests
+      i) Table with actions (approve/reject/generate PDF)
+         - **Files**: `app/admin/requests/page.tsx`
+         - **Acceptance Criteria**: Admin can approve and trigger PDF generation.
+
+---
+
+### E. Appointments
+1. Booking UI
+   a) Calendar component
+      i) Allow user slot booking
+         - **Files**: `app/appointments/page.tsx`
+         - **Acceptance Criteria**: Booking request is saved.
+         - **Edge Cases**: Double booking → prevent with Supabase constraint.
+
+2. Admin Schedule Management
+   a) CRUD availability slots
+      i) Publish availability
+         - **Files**: `app/admin/appointments/page.tsx`
+         - **Acceptance Criteria**: Public calendar updates when admin adds slot.
+
+---
+
+### F. Chatbot (Rule-Based)
+1. Admin Chatbot CMS
+   a) CRUD FAQ entries (trigger → response)
+      i) Save JSON to Supabase table `chatbot_rules`
+         - **Files**: `app/admin/chatbot/page.tsx`
+         - **Acceptance Criteria**: Added entries reflect in public chatbot.
+
+2. User Chatbot Widget
+   a) Sidebar chatbot UI
+      i) Match query → response from DB
+         - **Files**: `components/Chatbot.tsx`
+         - **Acceptance Criteria**: Query returns correct response.
+
+---
+
+### G. PDF Generation
+1. API Route for PDF
+   a) Use jsPDF/pdf-lib
+      i) Generate document template with user-provided data
+         - **Files**: `pages/api/generate-pdf.ts`
+         - **Acceptance Criteria**: API returns downloadable PDF
+         - **Edge Cases**: Missing input → return 400
+
+---
+
+### H. Notifications
+1. Email Notifications
+   a) Supabase Edge + Resend
+      i) Send email on request status change
+         - **Files**: `supabase/functions/sendEmail/index.ts`
+         - **Acceptance Criteria**: User receives email after admin updates request.
+         - **Edge Cases**: Invalid email → log error, don’t crash.
+
+---
+
+### I. Testing
+1. Unit Tests
+   a) Jest setup
+      i) Write test for request submission
+         - **Commands**:
+           ```bash
+           npm install jest @testing-library/react --save-dev
+           npm run test
+           ```
+         - **Acceptance Criteria**: Test passes for form submission.
+
+2. Integration Tests
+   a) Cypress E2E
+      i) Run login → request → admin approval flow
+         - **Commands**:
+           ```bash
+           npx cypress open
+           ```
+         - **Acceptance Criteria**: Flow completes with PDF generated.
+
+---
+
+
+## Section 2: Machine-Friendly JSON Summary
+
+```json
+{
+  "A. Project Initialization": {
+    "1. Repository Setup": {
+      "a) Monorepo Init": {
+        "i) Init Project": {
+          "Purpose": "Create base monorepo and app skeleton",
+          "Why": "Foundation for frontend/backend tasks",
+          "Exact Commands": [
+            "npx create-next-app pitogo-system --typescript --tailwind --eslint",
+            "cd pitogo-system",
+            "npm install @supabase/supabase-js @shadcn/ui jspdf pdf-lib recharts resend"
+          ],
+          "Files": ["package.json", "tailwind.config.js", ".env.local"],
+          "Acceptance Criteria": "npm run dev works",
+          "Edge Cases": "Wrong Supabase credentials"
+        }
+      }
+    }
+  },
+  "B. Database Setup": {
+    "1. Auth & Roles": {
+      "a) Create roles": {
+        "i) Add policies": {
+          "Purpose": "Secure data access",
+          "Why": "Prevent unauthorized data leaks",
+          "Exact Commands": ["create policy 'Allow staff' on documents for select using (auth.role() = 'staff');"],
+          "Files": ["supabase/migrations/001_init.sql"],
+          "Acceptance Criteria": "Different roles see only their tables",
+          "Edge Cases": "Unauthorized attempt returns 403"
+        }
+      }
+    }
+  }
+}
+```
+
